@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom XAU/USD AI Engine Pro</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0e14; color: #d1d4dc; margin: 0; padding: 20px; }
+        .header { display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px; }
+        .top-row { display: flex; justify-content: space-between; align-items: center; }
+        .controls { display: flex; gap: 10px; align-items: center; background: #151924; padding: 10px; border-radius: 6px; border: 1px solid #2a2e39; flex-wrap: wrap;}
+        button { background: #2a2e39; color: #d1d4dc; border: 1px solid #363c4e; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-weight: bold;}
+        button:hover { background: #363c4e; }
+        button.active { background: #2962ff; color: white; border-color: #2962ff; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .toggle-container { display: flex; align-items: center; gap: 8px; margin-left: 10px; padding-left: 15px; border-left: 1px solid #363c4e;}
+        
+        /* Custom Canvas Container */
+        #chart-container { 
+            width: 100%; 
+            height: 600px; 
+            background: #131722; 
+            border: 1px solid #363c4e; 
+            border-radius: 4px; 
+            position: relative; 
+            overflow: hidden;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .ai-panel { margin-top: 15px; padding: 15px; background: #151924; border-radius: 4px; border-left: 4px solid #00e676; display: flex; justify-content: space-between; align-items: center; border: 1px solid #2a2e39;}
+        #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(21, 25, 36, 0.9); padding: 15px 25px; border-radius: 4px; z-index: 10; border: 1px solid #2962ff; font-weight: bold; color: #fff;}
+        .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: bold; margin-left: 10px;}
+        .live-badge { background: #00e676; color: #0b0e14; animation: pulse 2s infinite;}
+        .timer-badge { background: #2962ff; color: white; border: 1px solid #82a5ff; font-family: monospace; font-size: 0.9em;}
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="top-row">
+            <h2 style="margin: 0; display: flex; align-items: center;">
+                XAU/USD AI Engine Pro 
+                <span class="status-badge live-badge" id="live-indicator">LIVE AUTO-SYNC</span>
+                <span class="status-badge timer-badge" id="candle-timer">Candle Close: --:--</span>
+            </h2>
+            <div style="font-size: 0.9em; color: #787b86;">100% Native Canvas Architecture</div>
+        </div>
+        <div class="controls">
+            <button class="tf-btn active" data-interval="5min">5m</button>
+            <button class="tf-btn" data-interval="15min">15m</button>
+            <button class="tf-btn" data-interval="1h">1H</button>
+            <button class="tf-btn" data-interval="4h">4H</button>
+            
+            <div class="toggle-container">
+                <input type="checkbox" id="sr-toggle">
+                <label for="sr-toggle">Support/Resistance</label>
+            </div>
+
+            <div class="toggle-container">
+                <input type="checkbox" id="sltp-toggle" checked>
+                <label for="sltp-toggle">Auto SL/Target Zones</label>
+            </div>
+            
+            <div style="margin-left: auto; color: #787b86; font-size: 0.9em; font-weight: bold;" id="next-update">Next Data Pull: 30s</div>
+        </div>
+    </div>
+
+    <div id="chart-container">
+        <div id="loading">Initializing Neural Market Scan...</div>
+        <canvas id="customChart"></canvas>
+    </div>
+    
+    <div class="ai-panel" id="ai-panel-box">
+        <div style="flex: 1;"><strong>🤖 AI Trading Desk:</strong> <span id="ai-status">Awaiting data...</span></div>
+        <div id="last-update" style="font-size: 0.9em; color: #787b86;"></div>
+    </div>
+
+    <script>
+        // --- 1. Engine Configuration ---
+        const API_KEY = "b2c7d75a119049978c58ea7514b72be9";
+        let currentData = [];
+        let isFetching = false;
+        let activeInterval = '5min';
+        let autoSyncTimer = null;
+        let countdownTimer = null;
+        let candleCloseInterval = null;
+        let secondsToUpdate = 30;
+
+        // --- 2. Custom Canvas Setup ---
+        const canvas = document.getElementById('customChart');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('chart-container');
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            if(currentData.length > 0) renderChart();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- 3. Custom Rendering Engine ---
+        function renderChart() {
+            if (!currentData || currentData.length === 0) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const padding = { top: 40, bottom: 40, left: 10, right: 80 }; 
+            const drawWidth = canvas.width - padding.left - padding.right;
+            const drawHeight = canvas.height - padding.top - padding.bottom;
+            const spacing = (drawWidth / currentData.length);
+            const candleWidth = spacing * 0.8;
+
+            let activeTrade = null;
+            for (let i = 1; i < currentData.length; i++) {
+                const prev = currentData[i - 1];
+                const candle = currentData[i];
+                const x = padding.left + (i * spacing) + (spacing / 2);
+
+                if (prev.close < prev.open && candle.close > candle.open && candle.open <= prev.close && candle.close >= prev.open) {
+                    const entry = candle.close; const sl = candle.low - 0.5; const tp = entry + ((entry - sl) * 2);
+                    activeTrade = { type: 'BUY', entry, sl, tp, x, index: i };
+                }
+                else if (prev.close > prev.open && candle.close < candle.open && candle.open >= prev.close && candle.close <= prev.open) {
+                    const entry = candle.close; const sl = candle.high + 0.5; const tp = entry - ((sl - entry) * 2);
+                    activeTrade = { type: 'SELL', entry, sl, tp, x, index: i };
+                }
+            }
+
+            let maxPrice = Math.max(...currentData.map(d => d.high));
+            let minPrice = Math.min(...currentData.map(d => d.low));
+
+            if (activeTrade && document.getElementById('sltp-toggle').checked) {
+                maxPrice = Math.max(maxPrice, activeTrade.tp, activeTrade.sl);
+                minPrice = Math.min(minPrice, activeTrade.tp, activeTrade.sl);
+            }
+
+            const paddingVal = (maxPrice - minPrice) * 0.05;
+            maxPrice += paddingVal; minPrice -= paddingVal;
+            const priceRange = maxPrice - minPrice || 1;
+            const getY = (price) => padding.top + drawHeight - ((price - minPrice) / priceRange) * drawHeight;
+
+            ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1; ctx.fillStyle = '#787b86'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+            for (let i = 0; i <= 5; i++) {
+                const y = padding.top + (drawHeight / 5) * i;
+                const priceLevel = maxPrice - (priceRange / 5) * i;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width - padding.right, y); ctx.stroke();
+                ctx.fillText(priceLevel.toFixed(2), canvas.width - padding.right + 10, y + 4);
+            }
+
+            if (activeTrade && document.getElementById('sltp-toggle').checked) {
+                const startX = activeTrade.x; const endX = canvas.width - padding.right;
+                ctx.fillStyle = 'rgba(0, 230, 118, 0.15)';
+                ctx.fillRect(startX, Math.min(getY(activeTrade.entry), getY(activeTrade.tp)), endX - startX, Math.abs(getY(activeTrade.tp) - getY(activeTrade.entry)));
+                
+                ctx.fillStyle = 'rgba(255, 82, 82, 0.15)';
+                ctx.fillRect(startX, Math.min(getY(activeTrade.entry), getY(activeTrade.sl)), endX - startX, Math.abs(getY(activeTrade.sl) - getY(activeTrade.entry)));
+
+                ctx.strokeStyle = '#fff'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(startX, getY(activeTrade.entry)); ctx.lineTo(endX, getY(activeTrade.entry)); ctx.stroke();
+                
+                ctx.strokeStyle = '#00e676'; ctx.setLineDash([]);
+                ctx.beginPath(); ctx.moveTo(startX, getY(activeTrade.tp)); ctx.lineTo(endX, getY(activeTrade.tp)); ctx.stroke();
+                ctx.fillStyle = '#00e676'; ctx.fillText(`TARGET: ${activeTrade.tp.toFixed(2)}`, startX + 10, getY(activeTrade.tp) - 5);
+
+                ctx.strokeStyle = '#ff5252';
+                ctx.beginPath(); ctx.moveTo(startX, getY(activeTrade.sl)); ctx.lineTo(endX, getY(activeTrade.sl)); ctx.stroke();
+                ctx.fillStyle = '#ff5252'; ctx.fillText(`STOP: ${activeTrade.sl.toFixed(2)}`, startX + 10, getY(activeTrade.sl) + 15);
+            }
+
+            ctx.setLineDash([]);
+            currentData.forEach((candle, index) => {
+                const x = padding.left + (index * spacing) + (spacing / 2);
+                const isBullish = candle.close >= candle.open;
+                
+                ctx.strokeStyle = isBullish ? '#00e676' : '#ff5252'; ctx.fillStyle = isBullish ? '#00e676' : '#ff5252';
+                ctx.beginPath(); ctx.moveTo(x, getY(candle.high)); ctx.lineTo(x, getY(candle.low)); ctx.lineWidth = 1.5; ctx.stroke();
+
+                const bodyHeight = Math.abs(getY(candle.close) - getY(candle.open)) || 1; 
+                ctx.fillRect(x - candleWidth/2, Math.min(getY(candle.open), getY(candle.close)), candleWidth, bodyHeight);
+
+                if (activeTrade && activeTrade.index === index) {
+                    ctx.fillStyle = activeTrade.type === 'BUY' ? '#00e676' : '#ff5252';
+                    const yPos = activeTrade.type === 'BUY' ? getY(candle.low) + 5 : getY(candle.high) - 5;
+                    const dir = activeTrade.type === 'BUY' ? 10 : -10;
+                    ctx.beginPath(); ctx.moveTo(x, yPos); ctx.lineTo(x - 6, yPos + dir); ctx.lineTo(x + 6, yPos + dir); ctx.fill();
+                }
+            });
+
+            const aiPanel = document.getElementById('ai-panel-box');
+            if (activeTrade) {
+                const color = activeTrade.type === 'BUY' ? '#00e676' : '#ff5252';
+                aiPanel.style.borderLeftColor = color;
+                document.getElementById('ai-status').innerHTML = `<span style="color:${color}; font-weight:bold;">${activeTrade.type} SIGNAL</span> at ${activeTrade.entry.toFixed(2)} &nbsp;|&nbsp; Target: ${activeTrade.tp.toFixed(2)} &nbsp;|&nbsp; Stop Loss: ${activeTrade.sl.toFixed(2)}`;
+            } else {
+                aiPanel.style.borderLeftColor = '#787b86';
+                document.getElementById('ai-status').innerText = "Market consolidating. No confirmed setups.";
+            }
+
+            if (document.getElementById('sr-toggle').checked) {
+                const lookback = currentData.slice(-50);
+                ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(255, 82, 82, 0.6)'; ctx.beginPath(); ctx.moveTo(padding.left, getY(Math.max(...lookback.map(d => d.high)))); ctx.lineTo(canvas.width - padding.right, getY(Math.max(...lookback.map(d => d.high)))); ctx.stroke();
+                ctx.strokeStyle = 'rgba(0, 230, 118, 0.6)'; ctx.beginPath(); ctx.moveTo(padding.left, getY(Math.min(...lookback.map(d => d.low)))); ctx.lineTo(canvas.width - padding.right, getY(Math.min(...lookback.map(d => d.low)))); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            const currentPrice = currentData[currentData.length - 1].close;
+            const cy = getY(currentPrice);
+            ctx.strokeStyle = '#2962ff'; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width - padding.right, cy); ctx.stroke();
+            ctx.fillStyle = '#2962ff'; ctx.fillRect(canvas.width - padding.right, cy - 10, padding.right, 20);
+            ctx.fillStyle = '#fff'; ctx.fillText(currentPrice.toFixed(2), canvas.width - padding.right + 10, cy + 4); ctx.setLineDash([]);
+        }
+
+        // --- 4. Live Data Fetching ---
+        async function fetchRealData() {
+            if (isFetching) return;
+            isFetching = true;
+            if(currentData.length === 0) document.getElementById('loading').style.display = 'block';
+            
+            const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=${activeInterval}&outputsize=100&apikey=${API_KEY}`;
+            
+            try {
+                const response = await fetch(url);
+                const json = await response.json();
+                
+                if (json.code === 429 || json.status === 'error') return;
+
+                currentData = json.values.map(d => ({
+                    time: d.datetime, open: parseFloat(d.open), high: parseFloat(d.high), low: parseFloat(d.low), close: parseFloat(d.close)
+                })).reverse();
+
+                document.getElementById('last-update').innerText = "Last Sync: " + new Date().toLocaleTimeString();
+                renderChart();
+
+            } catch (error) {
+                console.error("Sync error:", error);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                isFetching = false;
+                resetSyncTimer();
+            }
+        }
+
+        // --- 5. Auto-Sync & Candle Timer Systems ---
+        function resetSyncTimer() {
+            clearInterval(autoSyncTimer); clearInterval(countdownTimer);
+            secondsToUpdate = 30; 
+            countdownTimer = setInterval(() => {
+                secondsToUpdate--;
+                document.getElementById('next-update').innerText = secondsToUpdate <= 0 ? `Syncing...` : `Next Data Pull: ${secondsToUpdate}s`;
+            }, 1000);
+            autoSyncTimer = setInterval(fetchRealData, 30000);
+        }
+
+        function startCandleTimer() {
+            clearInterval(candleCloseInterval);
+            candleCloseInterval = setInterval(() => {
+                const currentMs = new Date().getTime();
+                let msPerCandle = 5 * 60 * 1000; 
+
+                if (activeInterval === '5min') msPerCandle = 5 * 60 * 1000;
+                else if (activeInterval === '15min') msPerCandle = 15 * 60 * 1000;
+                else if (activeInterval === '1h') msPerCandle = 60 * 60 * 1000;
+                else if (activeInterval === '4h') msPerCandle = 4 * 60 * 60 * 1000;
+
+                // Sync with UTC epoch for precise global candle closures
+                const elapsed = currentMs % msPerCandle;
+                const remainingMs = msPerCandle - elapsed;
+
+                const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
+                const minutes = Math.floor((remainingMs / (1000 * 60)) % 60);
+                const seconds = Math.floor((remainingMs / 1000) % 60);
+
+                let timeStr = hours > 0 ? `${hours.toString().padStart(2, '0')}:` : '';
+                timeStr += `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                document.getElementById('candle-timer').innerText = `Candle Close: ${timeStr}`;
+            }, 1000);
+        }
+
+        // --- 6. Controls ---
+        document.querySelectorAll('.tf-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                activeInterval = e.target.dataset.interval;
+                currentData = []; 
+                startCandleTimer(); // Instantly calculate for new timeframe
+                fetchRealData();
+            });
+        });
+
+        document.getElementById('sr-toggle').addEventListener('change', renderChart);
+        document.getElementById('sltp-toggle').addEventListener('change', renderChart);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            resizeCanvas(); 
+            startCandleTimer();
+            fetchRealData(); 
+        });
+    </script>
+</body>
+</html>
