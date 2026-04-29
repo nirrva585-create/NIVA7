@@ -3,161 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zero-Lag Pro Trading Terminal</title>
+    <title>Fully Automated XAU/USD Engine</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        body { background-color: #0b0e14; color: #d1d4dc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .app-container { max-width: 1600px; margin: 0 auto; padding: 20px; }
-        .card { background-color: #151924; border: 1px solid #2a2e39; border-radius: 8px; }
-        .card-header { background-color: #1a1e29; border-bottom: 1px solid #2a2e39; font-weight: bold; }
+        body { background-color: #080a10; color: #d1d4dc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden;}
+        .app-container { height: 100vh; display: flex; flex-direction: column; padding: 10px; }
+        
+        .header-panel { background-color: #12151f; border: 1px solid #222631; border-radius: 8px; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);}
         
         /* Custom Canvas Container */
-        #chart-container { 
-            width: 100%; height: 600px; background: #131722; 
-            position: relative; overflow: hidden; border-radius: 0 0 8px 8px;
-            cursor: crosshair;
-        }
-        canvas { display: block; width: 100%; height: 100%; }
+        #chart-wrapper { flex: 1; position: relative; background: #0d1117; border: 1px solid #222631; border-radius: 8px; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair;}
         
         /* Overlays */
-        #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(21, 25, 36, 0.9); padding: 15px 25px; border-radius: 4px; z-index: 10; border: 1px solid #0d6efd; font-weight: bold;}
+        #loading { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(13, 17, 23, 0.9); padding: 15px 25px; border-radius: 8px; z-index: 10; border: 1px solid #00e676; font-weight: bold; color: #fff; box-shadow: 0 0 20px rgba(0, 230, 118, 0.2);}
         
-        /* Badges & Text */
+        /* Auto-Bot HUD Overlay */
+        #bot-hud { position: absolute; top: 20px; left: 20px; background: rgba(18, 21, 31, 0.85); border: 1px solid #222631; border-left: 4px solid #0d6efd; padding: 15px; border-radius: 6px; z-index: 5; backdrop-filter: blur(4px); min-width: 280px; pointer-events: none;}
+        
         .live-badge { background-color: #00e676; color: #000; animation: pulse 2s infinite; font-weight: bold;}
-        .timer-badge { background-color: #0d6efd; font-family: monospace; font-size: 1.1em;}
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         
-        /* Custom Buttons */
         .btn-timeframe.active { background-color: #0d6efd; color: white; border-color: #0d6efd; }
-        .order-btn-buy { color: #00e676; border-color: #00e676; }
-        .order-btn-buy:hover, .order-btn-buy.active { background-color: #00e676; color: #000; }
-        .order-btn-sell { color: #ff5252; border-color: #ff5252; }
-        .order-btn-sell:hover, .order-btn-sell.active { background-color: #ff5252; color: #000; }
     </style>
 </head>
 <body>
 
 <div class="app-container">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="m-0 d-flex align-items-center gap-3">
-            <i class="fa-solid fa-chart-line text-primary"></i> XAU/USD 
-            <span class="badge live-badge fs-6"><i class="fa-solid fa-satellite-dish"></i> LIVE</span>
-            <span class="badge timer-badge fs-6" id="candle-timer"><i class="fa-regular fa-clock"></i> --:--</span>
-        </h2>
-        <div class="text-secondary fw-bold" id="next-update"><i class="fa-solid fa-rotate"></i> Next Sync: 30s</div>
+    <div class="header-panel">
+        <div class="d-flex align-items-center gap-3">
+            <h3 class="m-0 text-white"><i class="fa-solid fa-robot text-primary"></i> XAU/USD Auto-Engine</h3>
+            <span class="badge live-badge fs-6"><i class="fa-solid fa-bolt"></i> LIVE SYNC</span>
+            <span class="badge bg-primary font-monospace fs-6" id="candle-timer">00:00</span>
+        </div>
+
+        <div class="btn-group" role="group">
+            <button class="btn btn-outline-secondary btn-sm btn-timeframe active" data-interval="5min">5m</button>
+            <button class="btn btn-outline-secondary btn-sm btn-timeframe" data-interval="15min">15m</button>
+            <button class="btn btn-outline-secondary btn-sm btn-timeframe" data-interval="1h">1H</button>
+            <button class="btn btn-outline-secondary btn-sm btn-timeframe" data-interval="4h">4H</button>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="sr-toggle">
+                <label class="form-check-label small text-secondary" for="sr-toggle">Show S/R</label>
+            </div>
+            <div class="text-secondary font-monospace small" id="next-update">Next Poll: 30s</div>
+        </div>
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-9">
-            <div class="card shadow-sm h-100">
-                <div class="card-header d-flex justify-content-between align-items-center py-2">
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-outline-secondary btn-sm btn-timeframe active" data-interval="5min">5m</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm btn-timeframe" data-interval="15min">15m</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm btn-timeframe" data-interval="1h">1H</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm btn-timeframe" data-interval="4h">4H</button>
-                    </div>
-                    
-                    <div class="d-flex gap-3 align-items-center">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" id="sr-toggle">
-                            <label class="form-check-label small" for="sr-toggle"><i class="fa-solid fa-layer-group"></i> S/R Lines</label>
-                        </div>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" id="sltp-toggle" checked>
-                            <label class="form-check-label small" for="sltp-toggle"><i class="fa-solid fa-bullseye"></i> AI Targets</label>
-                        </div>
-                        <span class="text-secondary small"><i class="fa-solid fa-magnifying-glass"></i> Scroll to Zoom</span>
-                    </div>
-                </div>
-                
-                <div id="chart-container">
-                    <div id="loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Fetching Market Data...</div>
-                    <canvas id="customChart"></canvas>
-                </div>
+    <div id="chart-wrapper">
+        <div id="loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Synchronizing Market Node...</div>
+        
+        <div id="bot-hud">
+            <h6 class="text-white mb-2 border-bottom border-secondary pb-2"><i class="fa-solid fa-microchip text-primary"></i> Algorithm Status</h6>
+            <div id="hud-status" class="fs-5 fw-bold text-secondary mb-2">Scanning Data...</div>
+            <div id="hud-details" class="small text-secondary font-monospace lh-lg">
+                Entry: --<br>
+                Target: --<br>
+                Stop: --
             </div>
         </div>
 
-        <div class="col-lg-3">
-            <div class="card mb-3 shadow-sm" style="border-left: 4px solid #0d6efd;" id="ai-panel-box">
-                <div class="card-header bg-transparent border-0"><i class="fa-solid fa-robot text-primary"></i> <strong>AI Analysis</strong></div>
-                <div class="card-body pt-0">
-                    <p class="mb-1 fs-5" id="ai-status">Awaiting data...</p>
-                    <small class="text-secondary" id="last-update">Last Sync: --:--</small>
-                </div>
-            </div>
-
-            <div class="card shadow-sm">
-                <div class="card-header"><i class="fa-solid fa-crosshairs text-warning"></i> <strong>Pending Limit Orders</strong></div>
-                <div class="card-body">
-                    <p class="small text-secondary mb-3">Click a button below, then click on the chart to place a limit order at that exact price.</p>
-                    
-                    <div class="d-grid gap-2 mb-3">
-                        <button class="btn btn-outline-success order-btn-buy" id="btn-buy-limit">
-                            <i class="fa-solid fa-arrow-turn-up"></i> Place Buy Limit
-                        </button>
-                        <button class="btn btn-outline-danger order-btn-sell" id="btn-sell-limit">
-                            <i class="fa-solid fa-arrow-turn-down"></i> Place Sell Limit
-                        </button>
-                    </div>
-
-                    <hr class="border-secondary">
-                    
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="fw-bold small">Active Orders:</span>
-                        <button class="btn btn-sm btn-dark text-secondary border-secondary" id="btn-clear-orders"><i class="fa-solid fa-trash"></i> Clear All</button>
-                    </div>
-                    
-                    <ul class="list-group list-group-flush small" id="order-list" style="max-height: 200px; overflow-y: auto;">
-                        <li class="list-group-item bg-transparent text-secondary px-0">No active orders</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+        <canvas id="customChart"></canvas>
     </div>
 </div>
 
 <script>
-    // --- 1. Global State & Config ---
+    // --- 1. Global Config & State ---
     const API_KEY = "b2c7d75a119049978c58ea7514b72be9";
     let currentData = [];
     let isFetching = false;
     let activeInterval = '5min';
     
-    // Zoom State
-    let visibleCandles = 80; // Default zoom level
-    const MAX_CANDLES = 200; // Total fetched
-    const MIN_CANDLES = 20;  // Max zoom in
+    let visibleCandles = 100; 
+    const MAX_CANDLES = 300; 
+    const MIN_CANDLES = 30;  
     
-    // Interactive Order State
-    let placementMode = 'NONE'; // 'BUY', 'SELL', 'NONE'
-    let customOrders = []; // Array of { type: 'BUY'|'SELL', price: float }
+    // Auto-Bot State Trackers
+    let botCurrentTrade = null; // Holds the active trade being tracked
     let mouseHoverPrice = null;
     let mouseCanvasY = null;
-
-    // Timers
-    let autoSyncTimer, countdownTimer, candleCloseInterval;
-    let secondsToUpdate = 30;
 
     // --- 2. Canvas Setup ---
     const canvas = document.getElementById('customChart');
     const ctx = canvas.getContext('2d');
-    const container = document.getElementById('chart-container');
+    const wrapper = document.getElementById('chart-wrapper');
 
     function resizeCanvas() {
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
+        canvas.width = wrapper.clientWidth;
+        canvas.height = wrapper.clientHeight;
         if(currentData.length > 0) renderChart();
     }
     window.addEventListener('resize', resizeCanvas);
 
-    // --- 3. Interactive Engine (Zoom & Clicks) ---
+    // --- 3. Interactive Zoom & Hover ---
     canvas.addEventListener('wheel', (e) => {
-        e.preventDefault(); // Stop page scrolling
-        // Zoom logic: deltaY > 0 means scroll down (zoom out), < 0 means scroll up (zoom in)
-        const zoomSpeed = 5;
+        e.preventDefault(); 
+        const zoomSpeed = 8;
         if (e.deltaY > 0) visibleCandles = Math.min(visibleCandles + zoomSpeed, currentData.length);
         else visibleCandles = Math.max(visibleCandles - zoomSpeed, MIN_CANDLES);
         renderChart();
@@ -166,109 +112,149 @@
     canvas.addEventListener('mousemove', (e) => {
         const rect = canvas.getBoundingClientRect();
         mouseCanvasY = e.clientY - rect.top;
-        
-        // Calculate hover price if we have data
-        if (currentData.length > 0) {
-            // We need priceRange and minPrice from the render step. We recalculate it here for the hover preview.
-            const chartData = currentData.slice(-visibleCandles);
-            const padding = { top: 40, bottom: 40 };
-            const drawHeight = canvas.height - padding.top - padding.bottom;
-            let maxPrice = Math.max(...chartData.map(d => d.high));
-            let minPrice = Math.min(...chartData.map(d => d.low));
-            const paddingVal = (maxPrice - minPrice) * 0.05;
-            maxPrice += paddingVal; minPrice -= paddingVal;
-            const priceRange = maxPrice - minPrice || 1;
-
-            // Reverse the Y calculation to get price
-            mouseHoverPrice = minPrice + ((padding.top + drawHeight - mouseCanvasY) / drawHeight) * priceRange;
-        }
-        
-        // Only re-render constantly if we are in placement mode to show the preview line
-        if (placementMode !== 'NONE') renderChart(); 
+        renderChart(); // Fast re-render for crosshair
     });
 
-    canvas.addEventListener('mouseleave', () => { mouseHoverPrice = null; mouseCanvasY = null; if(placementMode !== 'NONE') renderChart(); });
+    canvas.addEventListener('mouseleave', () => { mouseCanvasY = null; renderChart(); });
 
-    canvas.addEventListener('click', () => {
-        if (placementMode !== 'NONE' && mouseHoverPrice) {
-            customOrders.push({ type: placementMode, price: mouseHoverPrice });
-            updateOrderUI();
-            
-            // Reset mode automatically after placement
-            placementMode = 'NONE';
-            document.getElementById('btn-buy-limit').classList.remove('active');
-            document.getElementById('btn-sell-limit').classList.remove('active');
-            container.style.cursor = 'crosshair';
-            renderChart();
+    // --- 4. Automated Bot Logic Engine ---
+    function runAutoBot(chartData) {
+        botCurrentTrade = null;
+        
+        // Scan visible data for the MOST RECENT unresolved signal
+        for (let i = 1; i < chartData.length; i++) {
+            const prev = chartData[i - 1];
+            const candle = chartData[i];
+
+            // If we are currently NOT in a trade, look for a new setup
+            if (!botCurrentTrade) {
+                // Bullish Engulfing
+                if (prev.close < prev.open && candle.close > candle.open && candle.open <= prev.close && candle.close >= prev.open) {
+                    botCurrentTrade = { 
+                        type: 'BUY', status: 'ACTIVE', entry: candle.close, 
+                        sl: candle.low - 0.5, tp: candle.close + ((candle.close - (candle.low - 0.5)) * 2), 
+                        startIndex: i, startX: 0 // X updated in render loop
+                    };
+                }
+                // Bearish Engulfing
+                else if (prev.close > prev.open && candle.close < candle.open && candle.open >= prev.close && candle.close <= prev.open) {
+                    botCurrentTrade = { 
+                        type: 'SELL', status: 'ACTIVE', entry: candle.close, 
+                        sl: candle.high + 0.5, tp: candle.close - (((candle.high + 0.5) - candle.close) * 2), 
+                        startIndex: i, startX: 0
+                    };
+                }
+            } 
+            // If we ARE in a trade, check if this candle hit the SL or TP
+            else {
+                if (botCurrentTrade.type === 'BUY') {
+                    if (candle.low <= botCurrentTrade.sl) botCurrentTrade = null; // Stopped out, reset
+                    else if (candle.high >= botCurrentTrade.tp) botCurrentTrade = null; // Target hit, reset
+                } else if (botCurrentTrade.type === 'SELL') {
+                    if (candle.high >= botCurrentTrade.sl) botCurrentTrade = null;
+                    else if (candle.low <= botCurrentTrade.tp) botCurrentTrade = null;
+                }
+            }
         }
-    });
+        
+        updateHUD();
+    }
 
-    // --- 4. Core Render Engine ---
+    function updateHUD() {
+        const statusEl = document.getElementById('hud-status');
+        const detailsEl = document.getElementById('hud-details');
+        const hudBox = document.getElementById('bot-hud');
+
+        if (botCurrentTrade) {
+            const isBuy = botCurrentTrade.type === 'BUY';
+            hudBox.style.borderLeftColor = isBuy ? '#00e676' : '#ff5252';
+            statusEl.innerHTML = `<span style="color: ${isBuy ? '#00e676' : '#ff5252'};"><i class="fa-solid ${isBuy ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}"></i> ACTIVE ${botCurrentTrade.type}</span>`;
+            detailsEl.innerHTML = `
+                <span class="text-white">Entry:</span> ${botCurrentTrade.entry.toFixed(2)}<br>
+                <span style="color: #00e676;">Target:</span> ${botCurrentTrade.tp.toFixed(2)}<br>
+                <span style="color: #ff5252;">Stop:</span> ${botCurrentTrade.sl.toFixed(2)}
+            `;
+        } else {
+            hudBox.style.borderLeftColor = '#6c757d';
+            statusEl.innerHTML = `<span class="text-secondary"><i class="fa-solid fa-radar"></i> Scanning...</span>`;
+            detailsEl.innerHTML = `Waiting for algorithm<br>to confirm next<br>engulfing breakout.`;
+        }
+    }
+
+    // --- 5. Core Render Engine ---
     function renderChart() {
         if (!currentData || currentData.length === 0) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Apply Zoom: Slice the data to only show the visible candles
         const chartData = currentData.slice(-visibleCandles);
-
-        const padding = { top: 40, bottom: 40, left: 10, right: 80 }; 
+        const padding = { top: 30, bottom: 30, left: 0, right: 70 }; 
         const drawWidth = canvas.width - padding.left - padding.right;
         const drawHeight = canvas.height - padding.top - padding.bottom;
         const spacing = (drawWidth / chartData.length);
-        const candleWidth = spacing * 0.8;
+        const candleWidth = Math.max(spacing * 0.7, 1);
 
-        // --- AI Signal Detection (Only on visible data for speed) ---
-        let activeTrade = null;
-        for (let i = 1; i < chartData.length; i++) {
-            const prev = chartData[i - 1];
-            const candle = chartData[i];
-            const x = padding.left + (i * spacing) + (spacing / 2);
+        // Run Bot Logic
+        runAutoBot(chartData);
 
-            if (prev.close < prev.open && candle.close > candle.open && candle.open <= prev.close && candle.close >= prev.open) {
-                activeTrade = { type: 'BUY', entry: candle.close, sl: candle.low - 0.5, tp: candle.close + ((candle.close - (candle.low - 0.5)) * 2), x, index: i };
-            }
-            else if (prev.close > prev.open && candle.close < candle.open && candle.open >= prev.close && candle.close <= prev.open) {
-                activeTrade = { type: 'SELL', entry: candle.close, sl: candle.high + 0.5, tp: candle.close - (((candle.high + 0.5) - candle.close) * 2), x, index: i };
-            }
-        }
-
-        // --- Dynamic Scaling ---
+        // --- Dynamic Y-Axis Scaling ---
         let maxPrice = Math.max(...chartData.map(d => d.high));
         let minPrice = Math.min(...chartData.map(d => d.low));
 
-        if (activeTrade && document.getElementById('sltp-toggle').checked) {
-            maxPrice = Math.max(maxPrice, activeTrade.tp, activeTrade.sl);
-            minPrice = Math.min(minPrice, activeTrade.tp, activeTrade.sl);
+        if (botCurrentTrade) {
+            maxPrice = Math.max(maxPrice, botCurrentTrade.tp, botCurrentTrade.sl);
+            minPrice = Math.min(minPrice, botCurrentTrade.tp, botCurrentTrade.sl);
         }
 
-        // Ensure custom limit orders fit on screen if they are close
-        customOrders.forEach(order => {
-            if (order.price > minPrice && order.price < maxPrice * 1.05) maxPrice = Math.max(maxPrice, order.price);
-            if (order.price < maxPrice && order.price > minPrice * 0.95) minPrice = Math.min(minPrice, order.price);
-        });
-
-        const paddingVal = (maxPrice - minPrice) * 0.05;
+        const paddingVal = (maxPrice - minPrice) * 0.08; // 8% padding
         maxPrice += paddingVal; minPrice -= paddingVal;
         const priceRange = maxPrice - minPrice || 1;
         const getY = (price) => padding.top + drawHeight - ((price - minPrice) / priceRange) * drawHeight;
 
         // --- Draw Grid ---
-        ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1; ctx.fillStyle = '#787b86'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
-        for (let i = 0; i <= 5; i++) {
-            const y = padding.top + (drawHeight / 5) * i;
-            const priceLevel = maxPrice - (priceRange / 5) * i;
+        ctx.strokeStyle = 'rgba(42, 46, 57, 0.5)'; ctx.lineWidth = 1; ctx.fillStyle = '#787b86'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+        for (let i = 0; i <= 6; i++) {
+            const y = padding.top + (drawHeight / 6) * i;
+            const priceLevel = maxPrice - (priceRange / 6) * i;
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width - padding.right, y); ctx.stroke();
             ctx.fillText(priceLevel.toFixed(2), canvas.width - padding.right + 10, y + 4);
         }
 
-        // --- Draw AI Zones ---
-        if (activeTrade && document.getElementById('sltp-toggle').checked) {
-            const startX = activeTrade.x; const endX = canvas.width - padding.right;
-            ctx.fillStyle = 'rgba(0, 230, 118, 0.1)'; ctx.fillRect(startX, Math.min(getY(activeTrade.entry), getY(activeTrade.tp)), endX - startX, Math.abs(getY(activeTrade.tp) - getY(activeTrade.entry)));
-            ctx.fillStyle = 'rgba(255, 82, 82, 0.1)'; ctx.fillRect(startX, Math.min(getY(activeTrade.entry), getY(activeTrade.sl)), endX - startX, Math.abs(getY(activeTrade.sl) - getY(activeTrade.entry)));
+        // --- Draw Automated Trade Zones ---
+        if (botCurrentTrade) {
+            botCurrentTrade.startX = padding.left + (botCurrentTrade.startIndex * spacing) + (spacing / 2);
+            const startX = botCurrentTrade.startX; 
+            const endX = canvas.width - padding.right;
 
-            ctx.strokeStyle = '#00e676'; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(startX, getY(activeTrade.tp)); ctx.lineTo(endX, getY(activeTrade.tp)); ctx.stroke();
-            ctx.strokeStyle = '#ff5252'; ctx.beginPath(); ctx.moveTo(startX, getY(activeTrade.sl)); ctx.lineTo(endX, getY(activeTrade.sl)); ctx.stroke();
+            // Profit Zone
+            ctx.fillStyle = 'rgba(0, 230, 118, 0.12)'; 
+            ctx.fillRect(startX, Math.min(getY(botCurrentTrade.entry), getY(botCurrentTrade.tp)), endX - startX, Math.abs(getY(botCurrentTrade.tp) - getY(botCurrentTrade.entry)));
+            
+            // Risk Zone
+            ctx.fillStyle = 'rgba(255, 82, 82, 0.12)'; 
+            ctx.fillRect(startX, Math.min(getY(botCurrentTrade.entry), getY(botCurrentTrade.sl)), endX - startX, Math.abs(getY(botCurrentTrade.sl) - getY(botCurrentTrade.entry)));
+
+            // Lines & Labels
+            ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+            
+            // Entry
+            ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(startX, getY(botCurrentTrade.entry)); ctx.lineTo(endX, getY(botCurrentTrade.entry)); ctx.stroke();
+            
+            // Target
+            ctx.strokeStyle = '#00e676'; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(startX, getY(botCurrentTrade.tp)); ctx.lineTo(endX, getY(botCurrentTrade.tp)); ctx.stroke();
+            ctx.fillStyle = '#00e676'; ctx.fillText(`TP: ${botCurrentTrade.tp.toFixed(2)}`, startX + 5, getY(botCurrentTrade.tp) - 5);
+            
+            // Stop
+            ctx.strokeStyle = '#ff5252'; ctx.beginPath(); ctx.moveTo(startX, getY(botCurrentTrade.sl)); ctx.lineTo(endX, getY(botCurrentTrade.sl)); ctx.stroke();
+            ctx.fillStyle = '#ff5252'; ctx.fillText(`SL: ${botCurrentTrade.sl.toFixed(2)}`, startX + 5, getY(botCurrentTrade.sl) + 15);
+        }
+
+        // --- Draw Support/Resistance ---
+        if (document.getElementById('sr-toggle').checked) {
+            const resPrice = Math.max(...chartData.map(d => d.high));
+            const supPrice = Math.min(...chartData.map(d => d.low));
+            ctx.setLineDash([2, 4]); ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255, 82, 82, 0.5)'; ctx.beginPath(); ctx.moveTo(0, getY(resPrice)); ctx.lineTo(canvas.width - padding.right, getY(resPrice)); ctx.stroke();
+            ctx.strokeStyle = 'rgba(0, 230, 118, 0.5)'; ctx.beginPath(); ctx.moveTo(0, getY(supPrice)); ctx.lineTo(canvas.width - padding.right, getY(supPrice)); ctx.stroke();
         }
 
         // --- Draw Candlesticks ---
@@ -277,114 +263,53 @@
             const x = padding.left + (index * spacing) + (spacing / 2);
             const isBullish = candle.close >= candle.open;
             
-            ctx.strokeStyle = isBullish ? '#00e676' : '#ff5252'; ctx.fillStyle = isBullish ? '#00e676' : '#ff5252';
+            ctx.strokeStyle = isBullish ? '#00e676' : '#ff5252'; 
+            ctx.fillStyle = isBullish ? '#00e676' : '#ff5252';
+            
+            // Wick
             ctx.beginPath(); ctx.moveTo(x, getY(candle.high)); ctx.lineTo(x, getY(candle.low)); ctx.lineWidth = 1.5; ctx.stroke();
 
-            const bodyHeight = Math.abs(getY(candle.close) - getY(candle.open)) || 1; 
+            // Body
+            const bodyHeight = Math.max(Math.abs(getY(candle.close) - getY(candle.open)), 1); 
             ctx.fillRect(x - candleWidth/2, Math.min(getY(candle.open), getY(candle.close)), candleWidth, bodyHeight);
 
-            if (activeTrade && activeTrade.index === index) {
-                const yPos = activeTrade.type === 'BUY' ? getY(candle.low) + 5 : getY(candle.high) - 5;
-                const dir = activeTrade.type === 'BUY' ? 10 : -10;
+            // Signal Arrow
+            if (botCurrentTrade && botCurrentTrade.startIndex === index) {
+                const yPos = botCurrentTrade.type === 'BUY' ? getY(candle.low) + 8 : getY(candle.high) - 8;
+                const dir = botCurrentTrade.type === 'BUY' ? 12 : -12;
                 ctx.beginPath(); ctx.moveTo(x, yPos); ctx.lineTo(x - 6, yPos + dir); ctx.lineTo(x + 6, yPos + dir); ctx.fill();
             }
         });
 
-        // --- Draw Support/Resistance ---
-        if (document.getElementById('sr-toggle').checked) {
-            const lookback = chartData.slice(-50);
-            ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
-            ctx.strokeStyle = 'rgba(255, 82, 82, 0.4)'; ctx.beginPath(); ctx.moveTo(padding.left, getY(Math.max(...lookback.map(d => d.high)))); ctx.lineTo(canvas.width - padding.right, getY(Math.max(...lookback.map(d => d.high)))); ctx.stroke();
-            ctx.strokeStyle = 'rgba(0, 230, 118, 0.4)'; ctx.beginPath(); ctx.moveTo(padding.left, getY(Math.min(...lookback.map(d => d.low)))); ctx.lineTo(canvas.width - padding.right, getY(Math.min(...lookback.map(d => d.low)))); ctx.stroke();
-        }
-
-        // --- Draw Custom Limit Orders ---
-        customOrders.forEach(order => {
-            const y = getY(order.price);
-            ctx.setLineDash([8, 4]); ctx.lineWidth = 2;
-            ctx.strokeStyle = order.type === 'BUY' ? '#0dcaf0' : '#fd7e14'; // Bootstrap Info and Orange
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width - padding.right, y); ctx.stroke();
-            
-            // Tag
-            ctx.fillStyle = order.type === 'BUY' ? '#0dcaf0' : '#fd7e14';
-            ctx.fillRect(canvas.width - padding.right, y - 10, padding.right, 20);
-            ctx.fillStyle = '#000'; ctx.font = 'bold 11px sans-serif';
-            ctx.fillText(`${order.type} LMT`, canvas.width - padding.right + 5, y + 4);
-        });
-
-        // --- Draw Interactive Placement Preview ---
-        if (placementMode !== 'NONE' && mouseCanvasY && mouseHoverPrice) {
-            ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
-            ctx.strokeStyle = placementMode === 'BUY' ? '#00e676' : '#ff5252';
+        // --- Hover Crosshair ---
+        if (mouseCanvasY !== null && mouseCanvasY > padding.top && mouseCanvasY < canvas.height - padding.bottom) {
+            ctx.setLineDash([4, 4]); ctx.lineWidth = 1; ctx.strokeStyle = '#6c757d';
             ctx.beginPath(); ctx.moveTo(0, mouseCanvasY); ctx.lineTo(canvas.width - padding.right, mouseCanvasY); ctx.stroke();
             
-            // Preview Tag
-            ctx.fillStyle = placementMode === 'BUY' ? '#00e676' : '#ff5252';
-            ctx.fillRect(canvas.width - padding.right, mouseCanvasY - 10, padding.right, 20);
-            ctx.fillStyle = '#000'; ctx.font = 'bold 11px sans-serif';
-            ctx.fillText(mouseHoverPrice.toFixed(2), canvas.width - padding.right + 5, mouseCanvasY + 4);
+            const hoverPrice = minPrice + ((padding.top + drawHeight - mouseCanvasY) / drawHeight) * priceRange;
+            ctx.fillStyle = '#6c757d'; ctx.fillRect(canvas.width - padding.right, mouseCanvasY - 10, padding.right, 20);
+            ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(hoverPrice.toFixed(2), canvas.width - padding.right + 5, mouseCanvasY + 4);
         }
 
-        // --- Draw Current Live Price ---
+        // --- Current Live Price Tag ---
         const currentPrice = chartData[chartData.length - 1].close;
         const cy = getY(currentPrice);
-        ctx.strokeStyle = '#0d6efd'; ctx.setLineDash([2, 2]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width - padding.right, cy); ctx.stroke();
+        ctx.strokeStyle = '#0d6efd'; ctx.setLineDash([]); ctx.lineWidth = 2; 
+        ctx.beginPath(); ctx.moveTo(canvas.width - padding.right - 10, cy); ctx.lineTo(canvas.width - padding.right, cy); ctx.stroke();
+        
         ctx.fillStyle = '#0d6efd'; ctx.fillRect(canvas.width - padding.right, cy - 12, padding.right, 24);
         ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.fillText(currentPrice.toFixed(2), canvas.width - padding.right + 8, cy + 4); 
-        ctx.setLineDash([]);
-
-        // Update AI UI text
-        updateAiUI(activeTrade);
-    }
-
-    // --- 5. UI Updaters ---
-    function updateAiUI(activeTrade) {
-        const aiPanel = document.getElementById('ai-panel-box');
-        if (activeTrade) {
-            const color = activeTrade.type === 'BUY' ? '#00e676' : '#ff5252';
-            aiPanel.style.borderLeftColor = color;
-            document.getElementById('ai-status').innerHTML = `<span style="color:${color};"><i class="fa-solid fa-bolt"></i> ${activeTrade.type} Confirmed</span><br><small class="text-white">Entry: ${activeTrade.entry.toFixed(2)}</small>`;
-        } else {
-            aiPanel.style.borderLeftColor = '#6c757d';
-            document.getElementById('ai-status').innerHTML = "Consolidating.<br><small class="text-secondary">No clear breakout.</small>";
-        }
-    }
-
-    function updateOrderUI() {
-        const list = document.getElementById('order-list');
-        list.innerHTML = '';
-        if(customOrders.length === 0) {
-            list.innerHTML = '<li class="list-group-item bg-transparent text-secondary px-0 border-0">No active orders</li>';
-            return;
-        }
-
-        customOrders.forEach((order, i) => {
-            const badgeColor = order.type === 'BUY' ? 'text-info' : 'text-warning';
-            list.innerHTML += `
-                <li class="list-group-item bg-transparent px-0 border-secondary d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong class="${badgeColor}">${order.type} LMT</strong><br>
-                        <span class="text-white">${order.price.toFixed(2)}</span>
-                    </div>
-                    <button class="btn btn-sm btn-link text-danger p-0" onclick="removeOrder(${i})"><i class="fa-solid fa-times"></i></button>
-                </li>
-            `;
-        });
-    }
-
-    window.removeOrder = function(index) {
-        customOrders.splice(index, 1);
-        updateOrderUI();
-        renderChart();
     }
 
     // --- 6. Data Fetching & Timers ---
+    let autoSyncTimer, countdownTimer, candleCloseInterval;
+    let secondsToUpdate = 30;
+
     async function fetchRealData() {
         if (isFetching) return;
         isFetching = true;
         if(currentData.length === 0) document.getElementById('loading').style.display = 'block';
         
-        // Fetching 200 candles now to allow for deep zooming
         const url = `https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=${activeInterval}&outputsize=${MAX_CANDLES}&apikey=${API_KEY}`;
         
         try {
@@ -395,15 +320,11 @@
             currentData = json.values.map(d => ({
                 time: d.datetime, open: parseFloat(d.open), high: parseFloat(d.high), low: parseFloat(d.low), close: parseFloat(d.close)
             })).reverse();
-
-            document.getElementById('last-update').innerHTML = `<i class="fa-solid fa-check"></i> Last Sync: ${new Date().toLocaleTimeString()}`;
             
-            // Adjust zoom if we fetched less data than expected
             visibleCandles = Math.min(visibleCandles, currentData.length);
-            
             renderChart();
         } catch (error) {
-            console.error("Sync error:", error);
+            console.error("Data error:", error);
         } finally {
             document.getElementById('loading').style.display = 'none';
             isFetching = false;
@@ -416,7 +337,7 @@
         secondsToUpdate = 30; 
         countdownTimer = setInterval(() => {
             secondsToUpdate--;
-            document.getElementById('next-update').innerHTML = secondsToUpdate <= 0 ? `<i class="fa-solid fa-rotate fa-spin text-primary"></i> Syncing...` : `<i class="fa-solid fa-rotate"></i> Next Sync: ${secondsToUpdate}s`;
+            document.getElementById('next-update').innerHTML = secondsToUpdate <= 0 ? `Syncing...` : `Next Poll: ${secondsToUpdate}s`;
         }, 1000);
         autoSyncTimer = setInterval(fetchRealData, 30000);
     }
@@ -430,61 +351,27 @@
             else if (activeInterval === '1h') msPerCandle = 60 * 60 * 1000;
             else if (activeInterval === '4h') msPerCandle = 4 * 60 * 60 * 1000;
 
-            const elapsed = currentMs % msPerCandle;
-            const remainingMs = msPerCandle - elapsed;
-            const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
-            const minutes = Math.floor((remainingMs / (1000 * 60)) % 60);
-            const seconds = Math.floor((remainingMs / 1000) % 60);
-
-            let timeStr = hours > 0 ? `${hours.toString().padStart(2, '0')}:` : '';
-            timeStr += `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            document.getElementById('candle-timer').innerHTML = `<i class="fa-regular fa-clock"></i> ${timeStr}`;
+            const remainingMs = msPerCandle - (currentMs % msPerCandle);
+            const m = Math.floor((remainingMs / 1000 / 60) % 60).toString().padStart(2, '0');
+            const s = Math.floor((remainingMs / 1000) % 60).toString().padStart(2, '0');
+            document.getElementById('candle-timer').innerText = `${m}:${s}`;
         }, 1000);
     }
 
-    // --- 7. Event Listeners ---
+    // --- 7. Initialization ---
     document.querySelectorAll('.btn-timeframe').forEach(btn => {
         btn.addEventListener('click', (e) => {
             document.querySelectorAll('.btn-timeframe').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             activeInterval = e.target.dataset.interval;
-            currentData = []; // Clear to trigger loader
-            startCandleTimer(); 
-            fetchRealData();
+            currentData = []; startCandleTimer(); fetchRealData();
         });
     });
 
     document.getElementById('sr-toggle').addEventListener('change', renderChart);
-    document.getElementById('sltp-toggle').addEventListener('change', renderChart);
 
-    // Limit Order Buttons
-    document.getElementById('btn-buy-limit').addEventListener('click', function() {
-        placementMode = placementMode === 'BUY' ? 'NONE' : 'BUY';
-        this.classList.toggle('active');
-        document.getElementById('btn-sell-limit').classList.remove('active');
-        container.style.cursor = placementMode === 'BUY' ? 'crosshair' : 'default';
-        renderChart();
-    });
-
-    document.getElementById('btn-sell-limit').addEventListener('click', function() {
-        placementMode = placementMode === 'SELL' ? 'NONE' : 'SELL';
-        this.classList.toggle('active');
-        document.getElementById('btn-buy-limit').classList.remove('active');
-        container.style.cursor = placementMode === 'SELL' ? 'crosshair' : 'default';
-        renderChart();
-    });
-
-    document.getElementById('btn-clear-orders').addEventListener('click', () => {
-        customOrders = [];
-        updateOrderUI();
-        renderChart();
-    });
-
-    // --- Initialization ---
     document.addEventListener('DOMContentLoaded', () => {
-        resizeCanvas(); 
-        startCandleTimer();
-        fetchRealData(); 
+        resizeCanvas(); startCandleTimer(); fetchRealData(); 
     });
 </script>
 </body>
